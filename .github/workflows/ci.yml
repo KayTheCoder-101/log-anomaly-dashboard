@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ingestion dependencies
+        run: pip install -r ingestion/requirements.txt
+
+      - name: Install ml dependencies
+        run: pip install -r ml/requirements.txt
+
+      - name: Compile check (syntax errors)
+        run: |
+          python -m py_compile ingestion/*.py
+          python -m py_compile ml/*.py
+          python -m py_compile generator/*.py
+          python -m py_compile dashboard/*.py
