@@ -4,14 +4,11 @@ An end-to-end system that generates, ingests, stores, and analyzes application l
 
 ## Architecture
 Log Generator → Ingestion API (FastAPI) → PostgreSQL
-
 ↓
-
 ML Scoring API (Isolation Forest) ← reads/writes
-
 ↓
-
 Streamlit Dashboard (live stats, charts, anomaly feed)
+
 
 All services run in Docker containers, orchestrated with Docker Compose, with automatic restart on failure.
 
@@ -43,7 +40,7 @@ All services run in Docker containers, orchestrated with Docker Compose, with au
 ## How to Run
 
 ```bash
-git clone https://github.com/<your-username>/log-anomaly-dashboard.git
+git clone https://github.com/KayTheCoder-101/log-anomaly-dashboard.git
 cd log-anomaly-dashboard
 docker-compose up --build
 ```
@@ -55,7 +52,11 @@ Then open:
 
 ## Screenshots
 
-*(add screenshots here — see below)*
+**Dashboard Overview**
+![Dashboard Overview](docs/screenshots/dashboard-overview.png)
+
+**Live Anomaly Feed**
+![Anomaly Feed](docs/screenshots/anomaly-feed.png)
 
 ## Database Schema
 
@@ -82,10 +83,3 @@ CREATE TABLE logs (
 - Add authentication and alerting (email/Slack on anomaly detection)
 - Move from Isolation Forest to an LSTM autoencoder for sequential pattern detection
 - Add Kubernetes deployment configs for production scaling
-Steps:
-
-Ye content README.md mein daal do (root folder mein, jahan docker-compose.yml hai)
-Apna GitHub username <your-username> ki jagah daal do
-Dashboard ke 2-3 achhe screenshots lo (main view, anomaly feed, filters ke saath) aur unhe repo mein docs/screenshots/ folder mein save karke README mein embed karo:
-
-markdown   ![Dashboard Overview](docs/screenshots/dashboard-overview.png)
