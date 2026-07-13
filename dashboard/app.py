@@ -1,22 +1,31 @@
+import os
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine
 from streamlit_autorefresh import st_autorefresh
 
-DATABASE_URL = "postgresql://admin:admin123@localhost:5432/logdb"
-engine = create_engine(DATABASE_URL)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:admin123@localhost:5432/logdb")
 
-st.set_page_config(page_title="Log Anomaly Dashboard", layout="wide")
+st.set_page_config(page_title="Log Anomaly Dashboard", page_icon="📊", layout="wide")
 
-# Auto-refresh every 5 seconds
-st_autorefresh(interval=5000, key="refresh")
+st_autorefresh(interval=10000, key="refresh")
 
-st.title("Log Analysis Dashboard with Anomaly Detection")
+
+@st.cache_resource
+def get_engine():
+    return create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=0)
+
+
+engine = get_engine()
 
 
 @st.cache_data(ttl=4)
 def load_data():
-    return pd.read_sql("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 500", engine)
+    df = pd.read_sql("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 500", engine)
+    df["is_anomaly"] = df["is_anomaly"].fillna(False).astype(bool)
+    df["anomaly_score"] = pd.to_numeric(df["anomaly_score"], errors="coerce")
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df
 
 
 df = load_data()
@@ -25,13 +34,32 @@ if df.empty:
     st.warning("No logs yet. Start the generator to see data here.")
     st.stop()
 
+# ---- Sidebar filters ----
+st.sidebar.header("Filters")
+
+status_options = sorted(df["status_code"].unique().tolist())
+selected_statuses = st.sidebar.multiselect("Status codes", status_options, default=status_options)
+
+endpoint_options = sorted(df["endpoint"].unique().tolist())
+selected_endpoints = st.sidebar.multiselect("Endpoints", endpoint_options, default=endpoint_options)
+
+show_anomalies_only = st.sidebar.checkbox("Show anomalies only (Recent Logs)", value=False)
+
+st.sidebar.caption(f"Data refreshes every 10s · {len(df)} rows loaded")
+
+filtered_df = df[df["status_code"].isin(selected_statuses) & df["endpoint"].isin(selected_endpoints)]
+
+# ---- Title ----
+st.title("📊 Log Analysis Dashboard with Anomaly Detection")
+st.caption("Real-time log ingestion, ML-based anomaly scoring, and live monitoring")
+
 # ---- Summary stats ----
-total_logs = len(df)
-anomaly_count = int(df["is_anomaly"].fillna(False).sum())
+total_logs = len(filtered_df)
+anomaly_count = int(filtered_df["is_anomaly"].sum())
 anomaly_rate = round((anomaly_count / total_logs) * 100, 1) if total_logs else 0
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Logs (last 500)", total_logs)
+col1.metric("Total Logs (filtered)", total_logs)
 col2.metric("Anomalies Detected", anomaly_count)
 col3.metric("Anomaly Rate", f"{anomaly_rate}%")
 
@@ -41,39 +69,38 @@ st.divider()
 chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
-    st.subheader("Log Volume Over Time")
-    volume = df.set_index("timestamp").resample("10s", on=None).size() if False else None
-    df_sorted = df.sort_values("timestamp")
-    df_sorted["minute"] = pd.to_datetime(df_sorted["timestamp"]).dt.floor("10s")
-    volume_by_time = df_sorted.groupby("minute").size()
-    st.line_chart(volume_by_time)
+    st.subheader("📈 Log Volume Over Time")
+    df_sorted = filtered_df.sort_values("timestamp")
+    df_sorted["bucket"] = df_sorted["timestamp"].dt.floor("10s")
+    volume_by_time = df_sorted.groupby("bucket").size()
+    st.line_chart(volume_by_time, color="#4C9AFF")
 
 with chart_col2:
-    st.subheader("Status Code Breakdown")
-    status_counts = df["status_code"].value_counts().sort_index()
-    st.bar_chart(status_counts)
+    st.subheader("📊 Status Code Breakdown")
+    status_counts = filtered_df["status_code"].value_counts().sort_index()
+    st.bar_chart(status_counts, color="#4C9AFF")
 
 st.divider()
 
 # ---- Anomaly feed ----
-st.subheader("Live Anomaly Feed")
+st.subheader("🚨 Live Anomaly Feed")
 
-anomalies = df[df["is_anomaly"] == True].sort_values("timestamp", ascending=False)
+anomalies = filtered_df[filtered_df["is_anomaly"]].sort_values("timestamp", ascending=False)
 
 if anomalies.empty:
-    st.info("No anomalies detected yet.")
+    st.info("No anomalies detected in the current filter selection.")
 else:
     display_cols = ["timestamp", "source_ip", "endpoint", "status_code", "response_time_ms", "anomaly_score"]
-    st.dataframe(
-        anomalies[display_cols].style.applymap(lambda _: "background-color: #ffcccc"),
-        use_container_width=True,
-    )
+    st.dataframe(anomalies[display_cols], width="stretch", height=300)
 
 st.divider()
 
 # ---- Recent logs table ----
-st.subheader("Recent Logs")
+st.subheader("🗒️ Recent Logs")
+
+logs_to_show = filtered_df[filtered_df["is_anomaly"]] if show_anomalies_only else filtered_df
+
 st.dataframe(
-    df[["timestamp", "source_ip", "endpoint", "method", "status_code", "response_time_ms", "is_anomaly"]].head(50),
-    use_container_width=True,
+    logs_to_show[["timestamp", "source_ip", "endpoint", "method", "status_code", "response_time_ms", "is_anomaly"]].head(50),
+    width="stretch",
 )
