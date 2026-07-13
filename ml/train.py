@@ -25,7 +25,7 @@ features_scaled = scaler.fit_transform(features)
 
 # contamination = expected proportion of anomalies in the data
 # start at 0.1 (10%), tune later based on results
-model = IsolationForest(n_estimators=200, contamination=0.1, random_state=42)
+model = IsolationForest(n_estimators=200, contamination=0.07, random_state=42)
 model.fit(features_scaled)
 
 # Save both the model and the scaler (need scaler at prediction time too)
