@@ -4,24 +4,14 @@ An end-to-end system that generates, ingests, stores, and analyzes application l
 
 ## Architecture
 
-Log Generator (synthetic traffic + injected anomalies)
-│
-│ POST /logs
-▼
-Ingestion API — FastAPI + SQLAlchemy (writes to Postgres)
-│
-│ POST /predict
-▼
-ML Scoring API — Isolation Forest
-│
-│ reads/writes anomaly flags
-▼
-PostgreSQL — logs table (with is_anomaly, anomaly_score)
-│
-│ reads live data
-▼
-Streamlit Dashboard — live stats, charts, anomaly feed, filters
-
+```mermaid
+flowchart TD
+    A[Log Generator<br/>synthetic traffic + injected anomalies] -->|POST /logs| B[Ingestion API<br/>FastAPI + SQLAlchemy]
+    B -->|writes| C[(PostgreSQL<br/>logs table)]
+    B -->|POST /predict| D[ML Scoring API<br/>Isolation Forest]
+    D -->|reads/writes anomaly flags| C
+    C -->|reads live data| E[Streamlit Dashboard<br/>stats, charts, anomaly feed, filters]
+```
 
 Every service above runs in its own Docker container, orchestrated with Docker Compose. The dashboard is set to auto-restart on failure, so the system stays available even if one component crashes.
 
