@@ -3,14 +3,33 @@
 An end-to-end system that generates, ingests, stores, and analyzes application logs in real time — using machine learning to automatically flag anomalous behavior (traffic spikes, server errors, suspicious IP activity) on a live dashboard.
 
 ## Architecture
-Log Generator → Ingestion API (FastAPI) → PostgreSQL
-↓
-ML Scoring API (Isolation Forest) ← reads/writes
-↓
-Streamlit Dashboard (live stats, charts, anomaly feed)
+
+┌─────────────────┐
+│ Log Generator │ synthetic traffic + injected anomalies
+└────────┬─────────┘
+│ POST /logs
+▼
+┌─────────────────────┐
+│ Ingestion API │ FastAPI + SQLAlchemy
+│ (writes to Postgres)│
+└────────┬─────────────┘
+│ POST /predict
+▼
+┌─────────────────────┐ ┌──────────────────┐
+│ ML Scoring API │◄──────►│ PostgreSQL │
+│ (Isolation Forest) │ read/ │ logs table with │
+│ │ write │ anomaly flags │
+└──────────────────────┘ └────────┬──────────┘
+│
+▼
+┌──────────────────────┐
+│ Streamlit Dashboard │
+│ live stats, charts, │
+│ anomaly feed, filters │
+└──────────────────────┘
 
 
-All services run in Docker containers, orchestrated with Docker Compose, with automatic restart on failure.
+Every service above runs in its own Docker container, orchestrated with Docker Compose. The dashboard is set to auto-restart on failure, so the system stays available even if one component crashes.
 
 ## Tech Stack
 
@@ -36,6 +55,10 @@ All services run in Docker containers, orchestrated with Docker Compose, with au
   - Sidebar filters (status code, endpoint, anomaly-only view)
 - Fully Dockerized — one command runs the entire pipeline
 - GitHub Actions CI for basic build validation
+
+## Demo
+
+*(add a link to your demo video here — e.g. a LinkedIn post, YouTube upload, or a GIF embedded directly)*
 
 ## How to Run
 
@@ -77,9 +100,16 @@ CREATE TABLE logs (
 );
 ```
 
+## Known Limitations
+
+- Runs on synthetically generated log data (via Faker), not real production traffic
+- Isolation Forest is a relatively simple anomaly detection model — see Future Improvements below
+- Single-node deployment; no horizontal scaling yet
+
 ## Future Improvements
 
 - Swap Streamlit for a custom React dashboard for more UI control
 - Add authentication and alerting (email/Slack on anomaly detection)
 - Move from Isolation Forest to an LSTM autoencoder for sequential pattern detection
+- Ingest real-world log data (e.g. from public datasets like LogHub)
 - Add Kubernetes deployment configs for production scaling
