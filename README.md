@@ -40,10 +40,6 @@ Every service above runs in its own Docker container, orchestrated with Docker C
 - Fully Dockerized — one command runs the entire pipeline
 - GitHub Actions CI for basic build validation
 
-## Demo
-
-*(add a link to your demo video here — e.g. a LinkedIn post, YouTube upload, or a GIF embedded directly)*
-
 ## How to Run
 
 ```bash
