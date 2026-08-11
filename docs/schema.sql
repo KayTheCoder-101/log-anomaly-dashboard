@@ -5,11 +5,13 @@ CREATE TABLE logs (
     endpoint VARCHAR(255) NOT NULL,
     method VARCHAR(10) NOT NULL,
     status_code INT NOT NULL,
-    response_time_ms FLOAT NOT NULL,
+    response_time_ms FLOAT,
     bytes_sent INT NOT NULL,
     user_agent TEXT,
     is_anomaly BOOLEAN DEFAULT NULL,
     anomaly_score FLOAT DEFAULT NULL,
+    lstm_is_anomaly BOOLEAN DEFAULT NULL,
+    lstm_anomaly_score FLOAT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
 

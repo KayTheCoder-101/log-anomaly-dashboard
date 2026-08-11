@@ -1,28 +1,17 @@
 import random
 import time
-import requests
 from datetime import datetime, timezone
 from faker import Faker
+from common import send_log
+import os
 
 fake = Faker()
-
-API_URL = "http://localhost:8000/logs"
+API_URL = os.getenv("API_URL", "http://localhost:8000/logs")
 
 ENDPOINTS = ["/login", "/logout", "/home", "/api/users", "/api/orders", "/checkout", "/search", "/profile"]
 METHODS = ["GET", "POST", "PUT", "DELETE"]
 NORMAL_STATUS_CODES = [200, 200, 200, 201, 204, 301, 404]
 ERROR_STATUS_CODES = [500, 502, 503]
-
-
-def send_log(log):
-    try:
-        response = requests.post(API_URL, json=log)
-        if response.status_code == 200:
-            print(f"Sent: {log['endpoint']} [{log['status_code']}] from {log['source_ip']}")
-        else:
-            print(f"Failed ({response.status_code}): {response.text}")
-    except Exception as e:
-        print(f"Error sending log: {e}")
 
 
 def generate_normal_log():
@@ -53,14 +42,14 @@ def generate_anomaly_log(anomaly_type, fixed_ip=None):
 def traffic_spike_burst(n=20):
     print(f"--- Injecting traffic spike burst ({n} logs) ---")
     for _ in range(n):
-        send_log(generate_normal_log())
+        result = send_log(generate_normal_log(), API_URL)
         time.sleep(0.05)
 
 
 def repeated_errors_burst(n=8):
     print(f"--- Injecting repeated server errors ({n} logs) ---")
     for _ in range(n):
-        send_log(generate_anomaly_log("server_error"))
+        result = send_log(generate_anomaly_log("server_error"), API_URL)
         time.sleep(0.1)
 
 
@@ -68,7 +57,7 @@ def ip_hammering_burst(n=15):
     ip = fake.ipv4()
     print(f"--- Injecting IP hammering burst from {ip} ({n} logs) ---")
     for _ in range(n):
-        send_log(generate_anomaly_log("ip_hammering", fixed_ip=ip))
+        result = send_log(generate_anomaly_log("ip_hammering", fixed_ip=ip), API_URL)
         time.sleep(0.05)
 
 
@@ -76,7 +65,7 @@ def main():
     print("Log generator started. Press Ctrl+C to stop.")
     count = 0
     while True:
-        send_log(generate_normal_log())
+        send_log(generate_normal_log(), API_URL)
         count += 1
         if count % 30 == 0:
             anomaly = random.choice([traffic_spike_burst, repeated_errors_burst, ip_hammering_burst])

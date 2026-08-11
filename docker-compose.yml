@@ -32,13 +32,17 @@ services:
         condition: service_started
 
   ml:
-      build: ./ml
-      ports:
-        - "8001:8001"
-      environment:
-        OMP_NUM_THREADS: "1"
-        OPENBLAS_NUM_THREADS: "1"
-        MKL_NUM_THREADS: "1"
+    build: ./ml
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://admin:admin123@postgres:5432/logdb
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    volumes:
+      - ./ml:/app
+      - ./data/raw:/data
 
   dashboard:
     build: ./dashboard
@@ -59,6 +63,11 @@ services:
     build: ./generator
     environment:
       API_URL: http://ingestion:8000/logs
+      LOG_SOURCE: synthetic
+      LOGHUB_FILE_PATH: /data/NASA_access_log_Jul95
+      LOGHUB_MAX_LINES: "0"
+    volumes:
+      - ./data/raw:/data
     depends_on:
       - ingestion
 

@@ -1,0 +1,8 @@
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Downloaded datasets and generated eval artifacts
+data/raw/*
+!data/raw/.gitkeep

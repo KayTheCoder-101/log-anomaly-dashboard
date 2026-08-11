@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+scikit-learn
+joblib
+pandas
+fastapi
+uvicorn[standard]
+pydantic
+psycopg2-binary
+sqlalchemy
+torch
