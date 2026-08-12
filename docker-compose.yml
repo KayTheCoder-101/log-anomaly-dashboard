@@ -56,6 +56,7 @@ services:
       OPENBLAS_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

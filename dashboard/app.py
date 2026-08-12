@@ -8,6 +8,27 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:admin123@localhost:
 
 st.set_page_config(page_title="Log Anomaly Dashboard", page_icon="📊", layout="wide")
 
+# ---- Auth gate ----
+# Simple shared-password gate. Not a real user system — intentionally minimal
+# for a single-operator dashboard. If DASHBOARD_PASSWORD is unset, auth is
+# disabled entirely (useful for local dev without setting up a password).
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
+
+if DASHBOARD_PASSWORD:
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.title("🔒 Log Anomaly Dashboard")
+        entered_password = st.text_input("Password", type="password")
+        if st.button("Log in"):
+            if entered_password == DASHBOARD_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password")
+        st.stop()
+
 # ---- Custom theme (dark, classy) ----
 st.markdown("""
 <style>
