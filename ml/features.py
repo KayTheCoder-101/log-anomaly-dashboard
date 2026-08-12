@@ -23,7 +23,14 @@ def compute_windowed_ip_count(df: pd.DataFrame, window_seconds: int = 60) -> pd.
             counts.append(((times >= window_start) & (times <= t)).sum())
         return pd.Series(counts, index=group.index)
 
-    counts = df.groupby("source_ip", group_keys=False).apply(rolling_count)
+    # NOTE: deliberately NOT using groupby(...).apply(rolling_count) here.
+    # That has a known pandas gotcha where the per-group Series results can
+    # get silently reshaped into a DataFrame instead of concatenated into a
+    # flat Series (behavior varies by group count / pandas version), which
+    # would corrupt this feature with NaNs with no error raised. Building
+    # the result explicitly with pd.concat over a list avoids the ambiguity.
+    per_group_results = [rolling_count(group) for _, group in df.groupby("source_ip")]
+    counts = pd.concat(per_group_results)
     return counts.reindex(df.index)
 
 
