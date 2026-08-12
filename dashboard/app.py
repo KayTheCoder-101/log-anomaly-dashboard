@@ -1,3 +1,4 @@
+import hmac
 import os
 import pandas as pd
 import streamlit as st
@@ -22,7 +23,7 @@ if DASHBOARD_PASSWORD:
         st.title("🔒 Log Anomaly Dashboard")
         entered_password = st.text_input("Password", type="password")
         if st.button("Log in"):
-            if entered_password == DASHBOARD_PASSWORD:
+            if hmac.compare_digest(entered_password, DASHBOARD_PASSWORD):
                 st.session_state.authenticated = True
                 st.rerun()
             else:

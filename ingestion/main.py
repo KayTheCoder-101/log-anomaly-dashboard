@@ -6,6 +6,7 @@ Run locally with:
     uvicorn main:app --reload
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -18,6 +19,12 @@ from sqlalchemy import desc, func, text
 
 from database import Base, engine, get_db
 from models import Log
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("ingestion")
 
 Base.metadata.create_all(bind=engine)
 
@@ -76,7 +83,7 @@ def score_log_isolation_forest(db: Session, db_log: Log):
         db_log.is_anomaly = result["is_anomaly"]
         db_log.anomaly_score = result["anomaly_score"]
     except Exception as e:
-        print(f"Isolation Forest scoring failed: {e}")
+        logger.warning(f"Isolation Forest scoring failed: {e}")
 
     return request_count
 
@@ -129,7 +136,7 @@ def score_log_lstm(db: Session, db_log: Log, latest_request_count: int):
         db_log.lstm_is_anomaly = result["is_anomaly"]
         db_log.lstm_anomaly_score = result["anomaly_score"]
     except Exception as e:
-        print(f"LSTM scoring failed: {e}")
+        logger.warning(f"LSTM scoring failed: {e}")
 
 
 def _claim_alert_slot(db: Session) -> bool:
@@ -185,7 +192,7 @@ def send_slack_alert(db: Session, db_log: Log):
     try:
         requests.post(SLACK_WEBHOOK_URL, json={"text": message_text}, timeout=2)
     except Exception as e:
-        print(f"Slack alert failed: {e}")
+        logger.warning(f"Slack alert failed: {e}")
 
 
 def score_log(db: Session, db_log: Log):
