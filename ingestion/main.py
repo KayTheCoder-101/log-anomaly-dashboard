@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 
 import requests
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -254,7 +254,7 @@ def create_log(log: LogIn, db: Session = Depends(get_db)):
 
 
 @app.get("/logs", response_model=List[LogOut])
-def read_logs(limit: int = 100, db: Session = Depends(get_db)):
+def read_logs(limit: int = Query(default=100, ge=1, le=1000), db: Session = Depends(get_db)):
     return db.query(Log).order_by(desc(Log.timestamp)).limit(limit).all()
 
 
