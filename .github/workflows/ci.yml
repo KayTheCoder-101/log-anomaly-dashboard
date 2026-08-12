@@ -23,9 +23,18 @@ jobs:
       - name: Install ml dependencies
         run: pip install -r ml/requirements.txt
 
+      - name: Install generator dependencies
+        run: pip install -r generator/requirements.txt
+
       - name: Compile check (syntax errors)
         run: |
           python -m py_compile ingestion/*.py
           python -m py_compile ml/*.py
           python -m py_compile generator/*.py
           python -m py_compile dashboard/*.py
+
+      - name: Run ml unit tests
+        run: cd ml && python -m pytest tests/ -v
+
+      - name: Run generator unit tests
+        run: cd generator && python -m pytest tests/ -v
