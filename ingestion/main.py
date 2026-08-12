@@ -14,7 +14,7 @@ import requests
 from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text
 
 from database import Base, engine, get_db
 from models import Log
@@ -28,7 +28,6 @@ LSTM_PREDICT_URL = "http://ml:8001/predict_lstm"
 LSTM_WINDOW_SIZE = 20
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
 SLACK_ALERT_COOLDOWN_SECONDS = int(os.environ.get("SLACK_ALERT_COOLDOWN_SECONDS", "30"))
-_last_alert_sent_at = None
 
 
 # ---- request/response schemas ----
@@ -133,22 +132,37 @@ def score_log_lstm(db: Session, db_log: Log, latest_request_count: int):
         print(f"LSTM scoring failed: {e}")
 
 
-def send_slack_alert(db_log: Log):
+def _claim_alert_slot(db: Session) -> bool:
+    """Atomically checks the shared cooldown and claims the alert slot if
+    eligible, using a single UPDATE ... WHERE so concurrent ingestion
+    replicas can't both pass the check before either one writes. Returns
+    True if this call should send the alert, False if still in cooldown.
+    """
+    result = db.execute(
+        text("""
+            UPDATE alert_state
+            SET last_alert_sent_at = :now
+            WHERE id = 1
+              AND (
+                  last_alert_sent_at IS NULL
+                  OR :now - last_alert_sent_at >= (:cooldown || ' seconds')::interval
+              )
+        """),
+        {"now": datetime.utcnow(), "cooldown": SLACK_ALERT_COOLDOWN_SECONDS},
+    )
+    db.commit()
+    return result.rowcount > 0
+
+
+def send_slack_alert(db: Session, db_log: Log):
     """Posts a Slack message if alerting is configured. Never raises —
     a broken/missing webhook must never take down log ingestion.
-    Throttled to at most one alert per SLACK_ALERT_COOLDOWN_SECONDS,
-    to avoid flooding the channel during a burst of anomalies.
+    Throttled to at most one alert per SLACK_ALERT_COOLDOWN_SECONDS across
+    ALL ingestion replicas (state lives in Postgres, not in-process), to
+    avoid flooding the channel during a burst of anomalies.
     """
-    global _last_alert_sent_at
-
     if not SLACK_WEBHOOK_URL:
         return
-
-    now = datetime.utcnow()
-    if _last_alert_sent_at is not None:
-        elapsed = (now - _last_alert_sent_at).total_seconds()
-        if elapsed < SLACK_ALERT_COOLDOWN_SECONDS:
-            return
 
     flagged_by = []
     if db_log.is_anomaly:
@@ -159,15 +173,17 @@ def send_slack_alert(db_log: Log):
     if not flagged_by:
         return
 
-    text = (
+    if not _claim_alert_slot(db):
+        return
+
+    message_text = (
         f":rotating_light: *Anomaly detected* — {db_log.method} {db_log.endpoint} "
         f"[{db_log.status_code}] from `{db_log.source_ip}`\n"
         f"Flagged by: {', '.join(flagged_by)}"
     )
 
     try:
-        requests.post(SLACK_WEBHOOK_URL, json={"text": text}, timeout=2)
-        _last_alert_sent_at = now
+        requests.post(SLACK_WEBHOOK_URL, json={"text": message_text}, timeout=2)
     except Exception as e:
         print(f"Slack alert failed: {e}")
 
@@ -177,7 +193,7 @@ def score_log(db: Session, db_log: Log):
     score_log_lstm(db, db_log, request_count)
     db.commit()
     db.refresh(db_log)
-    send_slack_alert(db_log)
+    send_slack_alert(db, db_log)
 
 
 # ---- endpoints ----
