@@ -6,6 +6,7 @@ Run locally with:
     uvicorn main:app --reload
 """
 
+import os
 from datetime import datetime, timedelta
 from typing import Optional, List
 
@@ -25,6 +26,9 @@ app = FastAPI(title="Log Ingestion API")
 ML_PREDICT_URL = "http://ml:8001/predict"
 LSTM_PREDICT_URL = "http://ml:8001/predict_lstm"
 LSTM_WINDOW_SIZE = 20
+SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
+SLACK_ALERT_COOLDOWN_SECONDS = int(os.environ.get("SLACK_ALERT_COOLDOWN_SECONDS", "30"))
+_last_alert_sent_at = None
 
 
 # ---- request/response schemas ----
@@ -129,11 +133,51 @@ def score_log_lstm(db: Session, db_log: Log, latest_request_count: int):
         print(f"LSTM scoring failed: {e}")
 
 
+def send_slack_alert(db_log: Log):
+    """Posts a Slack message if alerting is configured. Never raises —
+    a broken/missing webhook must never take down log ingestion.
+    Throttled to at most one alert per SLACK_ALERT_COOLDOWN_SECONDS,
+    to avoid flooding the channel during a burst of anomalies.
+    """
+    global _last_alert_sent_at
+
+    if not SLACK_WEBHOOK_URL:
+        return
+
+    now = datetime.utcnow()
+    if _last_alert_sent_at is not None:
+        elapsed = (now - _last_alert_sent_at).total_seconds()
+        if elapsed < SLACK_ALERT_COOLDOWN_SECONDS:
+            return
+
+    flagged_by = []
+    if db_log.is_anomaly:
+        flagged_by.append(f"Isolation Forest (score={db_log.anomaly_score:.3f})")
+    if db_log.lstm_is_anomaly:
+        flagged_by.append(f"LSTM (score={db_log.lstm_anomaly_score:.3f})")
+
+    if not flagged_by:
+        return
+
+    text = (
+        f":rotating_light: *Anomaly detected* — {db_log.method} {db_log.endpoint} "
+        f"[{db_log.status_code}] from `{db_log.source_ip}`\n"
+        f"Flagged by: {', '.join(flagged_by)}"
+    )
+
+    try:
+        requests.post(SLACK_WEBHOOK_URL, json={"text": text}, timeout=2)
+        _last_alert_sent_at = now
+    except Exception as e:
+        print(f"Slack alert failed: {e}")
+
+
 def score_log(db: Session, db_log: Log):
     request_count = score_log_isolation_forest(db, db_log)
     score_log_lstm(db, db_log, request_count)
     db.commit()
     db.refresh(db_log)
+    send_slack_alert(db_log)
 
 
 # ---- endpoints ----

@@ -6,3 +6,4 @@ __pycache__/
 # Downloaded datasets and generated eval artifacts
 data/raw/*
 !data/raw/.gitkeep
+.env
