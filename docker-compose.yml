@@ -73,6 +73,18 @@ services:
       postgres:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      ingestion:
+        condition: service_healthy
+
   generator:
     build: ./generator
     environment:
