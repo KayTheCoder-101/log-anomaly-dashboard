@@ -8,11 +8,13 @@ Run locally with:
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Optional, List
 
 import requests
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func, text
@@ -29,6 +31,20 @@ logger = logging.getLogger("ingestion")
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Log Ingestion API")
+
+# CORS: allows a browser-based frontend (e.g. the React dashboard planned
+# for a later step) served from a different origin to call this API.
+# Origins are configurable via env var so this stays safe by default —
+# an empty/unset ALLOWED_ORIGINS means no cross-origin requests are permitted.
+_allowed_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 ML_PREDICT_URL = "http://ml:8001/predict"
 LSTM_PREDICT_URL = "http://ml:8001/predict_lstm"
@@ -63,6 +79,28 @@ class LogOut(LogIn):
 
 # ---- helpers ----
 
+def post_with_retry(url: str, json_payload: dict, timeout: float, max_attempts: int = 2):
+    """POSTs with a small bounded retry for transient failures (e.g. a brief
+    network blip between containers). Not retried: this raises on final
+    failure, same as a plain requests.post + raise_for_status would — the
+    caller's existing try/except still handles the ultimate failure case.
+    Deliberately short and bounded (no exponential backoff into minutes)
+    since ML scoring should stay fast; a slow ml service should just fail
+    and leave the log unscored rather than blocking ingestion for a long time.
+    """
+    last_exception = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.post(url, json=json_payload, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            last_exception = e
+            if attempt < max_attempts:
+                time.sleep(0.2 * attempt)  # 0.2s, then 0.4s, etc.
+    raise last_exception
+
+
 def score_log_isolation_forest(db: Session, db_log: Log):
     """Calls the Isolation Forest ML service and writes is_anomaly/anomaly_score."""
     window_start = db_log.timestamp - timedelta(seconds=60)
@@ -73,12 +111,11 @@ def score_log_isolation_forest(db: Session, db_log: Log):
     ).scalar()
 
     try:
-        response = requests.post(ML_PREDICT_URL, json={
+        response = post_with_retry(ML_PREDICT_URL, {
             "response_time_ms": db_log.response_time_ms,
             "status_code": db_log.status_code,
             "request_count_per_ip": request_count,
         }, timeout=2)
-        response.raise_for_status()
         result = response.json()
         db_log.is_anomaly = result["is_anomaly"]
         db_log.anomaly_score = result["anomaly_score"]
@@ -130,8 +167,7 @@ def score_log_lstm(db: Session, db_log: Log, latest_request_count: int):
         })
 
     try:
-        response = requests.post(LSTM_PREDICT_URL, json={"window": window}, timeout=3)
-        response.raise_for_status()
+        response = post_with_retry(LSTM_PREDICT_URL, {"window": window}, timeout=3)
         result = response.json()
         db_log.lstm_is_anomaly = result["is_anomaly"]
         db_log.lstm_anomaly_score = result["anomaly_score"]

@@ -9,6 +9,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_DB: logdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d logdb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -38,3 +52,8 @@ jobs:
 
       - name: Run generator unit tests
         run: cd generator && python -m pytest tests/ -v
+
+      - name: Run ingestion unit tests
+        env:
+          DATABASE_URL: postgresql://admin:admin123@localhost:5432/logdb
+        run: cd ingestion && python -m pytest tests/ -v
