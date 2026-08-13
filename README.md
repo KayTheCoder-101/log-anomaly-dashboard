@@ -196,12 +196,11 @@ CREATE TABLE alert_state (
 - No tests for the training scripts (`train.py`, `train_lstm.py`) or `predict_api.py` directly — only the shared `ml/features.py` feature-engineering module is unit tested. Training scripts are mostly I/O orchestration (DB reads, model fitting, file writes), which is expensive and low-value to unit test; the feature logic worth testing is already covered.
 - No tests for `dashboard/app.py` or the React frontend — Streamlit apps are difficult to unit test meaningfully, and the React dashboard was validated through manual/visual testing rather than a JS test suite.
 - Trained model artifacts (`.pkl`/`.pt`) are committed to git for convenience (clone-and-run works immediately). This doesn't scale well long-term; a production setup would use a model registry instead.
-- The lightweight migration runner (`docs/migrate.py`) has no rollback support, by design — appropriately scoped for this project's size, but not a substitute for a full framework like Alembic at larger scale. It also isn't packaged for Kubernetes use yet — the `alert_state` table currently needs a manual one-time SQL command in a fresh cluster (documented in `k8s/README.md`).
+- The lightweight migration runner (`docs/migrate.py`) has no rollback support, by design — appropriately scoped for this project's size, but not a substitute for a full framework like Alembic at larger scale.
 
 ## Future Improvements
 
 - Push images to a real container registry and adapt the Kubernetes manifests for a cloud cluster, if this project ever needs to run somewhere reachable from the internet
-- Package `docs/migrate.py` as a Kubernetes Job instead of a manual one-time SQL command
 - Optimize LSTM serving-time feature computation (e.g. a rolling cache instead of recomputing per-window)
 - Explore an ensemble approach that combines both models' scores rather than reporting them independently
 - Add automated tests for the React frontend (component/interaction tests)

@@ -34,21 +34,19 @@ Watch everything come up:
 kubectl get pods -n log-anomaly -w
 ```
 
-### One-time setup: create the `alert_state` table
+### One-time setup: run database migrations
 
-Our SQLAlchemy models auto-create the `logs` table on ingestion startup, but `alert_state` (used for cross-replica Slack alert throttling — see the main README) isn't a SQLAlchemy model, so it needs to be created manually the first time:
+`docs/migrate.py` and `docs/migrations/*.sql` are also copied into `ml/` (as `ml/migrate.py` / `ml/migrations/`) so they're baked into the `ml` image and can run as a proper Kubernetes Job — this creates `alert_state` (used for cross-replica Slack alert throttling) and applies any future schema changes the same way:
 
 ```bash
-kubectl exec -n log-anomaly postgres-0 -- psql -U admin -d logdb -c "
-CREATE TABLE IF NOT EXISTS alert_state (
-    id INT PRIMARY KEY DEFAULT 1,
-    last_alert_sent_at TIMESTAMP
-);
-INSERT INTO alert_state (id, last_alert_sent_at) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
-"
+kubectl apply -f k8s/10-migrate-job.yaml
+kubectl wait --for=condition=complete --timeout=60s job/migrate -n log-anomaly
+kubectl logs -n log-anomaly job/migrate
 ```
 
-(A cleaner long-term approach would be a Kubernetes Job running our `docs/migrate.py` script — left as a future improvement, since it currently assumes local filesystem access to `docs/migrations/*.sql` rather than being packaged into a container image.)
+**Known gotcha:** if you rebuild the `ml` image locally after already loading an older version into the cluster, Kubernetes can keep using a stale cached image under the `latest` tag (`imagePullPolicy: IfNotPresent` means "don't re-pull if a `latest` tag already exists locally," and Docker Desktop's Kubernetes doesn't always notice the tag now points to new content). If a rebuilt image doesn't seem to be picked up, force a rollout restart on the relevant Deployment (`kubectl rollout restart deployment/ml -n log-anomaly`), or tag the image explicitly (e.g. `docker tag log-anomaly-dashboard-ml:latest log-anomaly-dashboard-ml:v2`) and reference that tag in the manifest instead of relying on `latest`. This was hit and confirmed during development — the failing pod was found to be running an image digest from hours earlier despite a fresh local rebuild.
+
+Re-running the Job is always safe — `migrate.py` tracks applied migrations in a `schema_migrations` table and skips anything already applied. Delete and re-apply the Job to run it again (`kubectl delete job migrate -n log-anomaly --ignore-not-found`).
 
 ### metrics-server
 
