@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: log-anomaly
+data:
+  POSTGRES_DB: "logdb"
+  ML_PREDICT_URL: "http://ml:8001/predict"
+  ALLOWED_ORIGINS: "http://localhost:3000"
+  SLACK_ALERT_COOLDOWN_SECONDS: "30"
+  VITE_API_URL: "http://localhost:8000"

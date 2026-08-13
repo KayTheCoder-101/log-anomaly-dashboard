@@ -1,6 +1,6 @@
 # Log Analysis Dashboard with Anomaly Detection
 
-An end-to-end system that generates, ingests, stores, and analyzes application logs in real time — using two complementary machine learning models to automatically flag anomalous behavior (traffic spikes, server errors, suspicious IP activity), with real-time Slack alerting and a live dashboard.
+An end-to-end system that generates, ingests, stores, and analyzes application logs in real time — using two complementary machine learning models to automatically flag anomalous behavior (traffic spikes, server errors, suspicious IP activity), with real-time Slack alerting and two live dashboards.
 
 Built as a learning project with a deliberate focus on measuring and improving real system behavior, not just wiring components together. Along the way, evaluation and testing discipline surfaced and fixed **three real production-grade bugs** — a train/serve feature skew, a service-startup race condition, and a silent pandas data-corruption edge case — each with a documented before/after fix. See [Evaluation Results](#evaluation-results) and [Bugs Found & Fixed](#bugs-found--fixed-through-evaluation-and-testing) below.
 
@@ -16,7 +16,8 @@ flowchart TD
     D -->|writes anomaly flags| C
     E -->|writes anomaly flags| C
     B -->|alert if flagged| G[Slack Webhook<br/>throttled, shared state in Postgres]
-    C -->|reads live data| F[Streamlit Dashboard<br/>password-gated, stats, charts, anomaly feed]
+    C -->|reads directly| F[Streamlit Dashboard<br/>password-gated]
+    B -->|GET /logs, CORS-enabled| H[React Dashboard<br/>nginx-served static build]
 ```
 
 Every service runs in its own Docker container with a healthcheck, orchestrated with Docker Compose. Both ML models run inside the same `ml` service, sharing a single feature-engineering module (`ml/features.py`) so training and serving always compute features identically — the exact discipline that caught two of the three bugs documented below.
@@ -30,7 +31,7 @@ Every service runs in its own Docker container with a healthcheck, orchestrated 
 | Database | PostgreSQL, with a lightweight tracked migration system |
 | ML — point anomalies | scikit-learn (Isolation Forest) |
 | ML — sequential anomalies | PyTorch (LSTM Autoencoder) |
-| Dashboard | Streamlit, password-gated |
+| Dashboards | Streamlit (password-gated) and React + Vite (nginx-served, dual-model detection view) |
 | Alerting | Slack Incoming Webhooks, cross-replica-safe throttling |
 | Containers | Docker, Docker Compose, healthchecks on all services |
 | Testing | pytest — 25 tests across all 3 Python services |
@@ -44,7 +45,7 @@ Every service runs in its own Docker container with a healthcheck, orchestrated 
 - **LSTM Autoencoder** — trained on 20-log sliding windows in chronological order, for detecting sequential/temporal patterns (e.g. traffic ramp-ups) that a row-by-row model structurally cannot see
 - A repeatable evaluation harness (`generator/eval_run.py` + `ml/evaluate.py`) that sends a controlled batch of known-labeled normal/anomalous logs and computes precision, recall, F1, and a confusion matrix for both models against ground truth
 - **Slack alerting** on any anomaly flagged by either model, throttled to avoid burst spam, with cooldown state shared in Postgres so it stays correct across restarts or multiple replicas
-- **Password-gated Streamlit dashboard** with live summary stats, log volume/status code charts, live anomaly feed, and sidebar filters
+- **Two dashboards**: a password-gated Streamlit app (quick internal tool), and a React + Vite production-style dashboard served via nginx — with real navigation, a detail drawer per log, and a combined "IF + LSTM" indicator showing when both models agree (a genuine improvement over Streamlit's single-model view), consuming the ingestion API directly rather than querying Postgres
 - Fully Dockerized — one command runs the entire pipeline; every service has a healthcheck
 - 25 automated tests across ingestion, ml, and generator, run in CI on every push
 - A lightweight tracked migration system (`docs/migrate.py` + `docs/migrations/`) instead of ad-hoc manual schema changes
@@ -79,7 +80,8 @@ docker-compose up --build
 ```
 
 Then open:
-- Dashboard: http://localhost:8501
+- React dashboard: http://localhost:3000
+- Streamlit dashboard: http://localhost:8501
 - Ingestion API docs: http://localhost:8000/docs
 - ML scoring API docs: http://localhost:8001/docs
 
@@ -162,16 +164,16 @@ CREATE TABLE alert_state (
 ## Known Limitations
 
 - Single-node deployment; no horizontal scaling yet (planned for a Kubernetes step)
-- Dashboard queries Postgres directly rather than through an API layer — acceptable for Streamlit, but will be replaced when a React frontend is added
+- The Streamlit dashboard still queries Postgres directly rather than through an API layer (the React dashboard, added later, consumes the ingestion API properly). Acceptable since Streamlit is the secondary/internal tool now
 - LSTM windowing recomputes per-IP request counts on every prediction, which is correctness-first but not optimized for high-throughput serving
 - No tests for the training scripts (`train.py`, `train_lstm.py`) or `predict_api.py` directly — only the shared `ml/features.py` feature-engineering module is unit tested. Training scripts are mostly I/O orchestration (DB reads, model fitting, file writes), which is expensive and low-value to unit test; the feature logic worth testing is already covered
-- No tests for `dashboard/app.py` — Streamlit apps are difficult to unit test meaningfully
+- No tests for `dashboard/app.py` or the React frontend — Streamlit apps are difficult to unit test meaningfully, and the React dashboard was validated through manual/visual testing rather than a JS test suite
 - Trained model artifacts (`.pkl`/`.pt`) are committed to git for convenience (clone-and-run works immediately). This doesn't scale well long-term; a production setup would use a model registry instead
 - The lightweight migration runner (`docs/migrate.py`) has no rollback support, by design — appropriately scoped for this project's size, but not a substitute for a full framework like Alembic at larger scale
 
 ## Future Improvements
 
-- Swap Streamlit for a custom React dashboard for more UI control, consuming a clean API layer instead of hitting Postgres directly (CORS support is already in place on the ingestion API for this)
 - Add Kubernetes deployment configs, with horizontal scaling specifically for the ingestion and ML services
 - Optimize LSTM serving-time feature computation (e.g. a rolling cache instead of recomputing per-window)
 - Explore an ensemble approach that combines both models' scores rather than reporting them independently
+- Add automated tests for the React frontend (component/interaction tests)
