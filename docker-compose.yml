@@ -57,22 +57,6 @@ services:
       retries: 10
       start_period: 15s
 
-  dashboard:
-    build: ./dashboard
-    restart: unless-stopped
-    ports:
-      - "8501:8501"
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@postgres:5432/${POSTGRES_DB:-logdb}
-      OMP_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
-      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   frontend:
     build:
       context: ./frontend
