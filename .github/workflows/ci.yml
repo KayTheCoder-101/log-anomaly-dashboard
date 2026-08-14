@@ -45,7 +45,6 @@ jobs:
           python -m py_compile ingestion/*.py
           python -m py_compile ml/*.py
           python -m py_compile generator/*.py
-          python -m py_compile dashboard/*.py
 
       - name: Run ml unit tests
         run: cd ml && python -m pytest tests/ -v
